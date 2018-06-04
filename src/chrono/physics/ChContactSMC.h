@@ -19,19 +19,19 @@
 #ifndef CH_CONTACT_SMC_H
 #define CH_CONTACT_SMC_H
 
-#include <cmath>
 #include <algorithm>
+#include <cmath>
 
 #include "chrono/collision/ChCCollisionModel.h"
 #include "chrono/core/ChFrame.h"
 #include "chrono/core/ChMatrixDynamic.h"
 #include "chrono/core/ChVectorDynamic.h"
-#include "chrono/solver/ChKblockGeneric.h"
-#include "chrono/solver/ChSystemDescriptor.h"
 #include "chrono/physics/ChContactContainer.h"
 #include "chrono/physics/ChContactTuple.h"
 #include "chrono/physics/ChMaterialSurfaceSMC.h"
 #include "chrono/physics/ChSystemSMC.h"
+#include "chrono/solver/ChKblockGeneric.h"
+#include "chrono/solver/ChSystemDescriptor.h"
 #include "chrono/timestepper/ChState.h"
 
 namespace chrono {
@@ -53,16 +53,18 @@ class ChContactSMC : public ChContactTuple<Ta, Tb> {
 
     ChVector<> m_force;        ///< contact force on objB
     ChContactJacobian* m_Jac;  ///< contact Jacobian data
+    double kn, gn, kt, gt, effRadius;
 
   public:
     ChContactSMC() : m_Jac(NULL) {}
 
-    ChContactSMC(ChContactContainer* mcontainer,      ///< contact container
+    ChContactSMC(ChContactContainer* mcontainer,          ///< contact container
                  Ta* mobjA,                               ///< collidable object A
                  Tb* mobjB,                               ///< collidable object B
                  const collision::ChCollisionInfo& cinfo  ///< data for the contact pair
                  )
         : ChContactTuple<Ta, Tb>(mcontainer, mobjA, mobjB, cinfo), m_Jac(NULL) {
+        SetParameters(mobjA, mobjB, cinfo);
         Reset(mobjA, mobjB, cinfo);
     }
 
@@ -119,6 +121,104 @@ class ChContactSMC : public ChContactTuple<Ta, Tb> {
         }
     }
 
+    /// Calculate coefficents of stiffness and dampening, effective radius of curvature and pre-contact velocity for
+    /// this contact
+    void SetParameters(Ta* mobjA, Tb* mobjB, const collision::ChCollisionInfo& cinfo) {
+        // Calculate effective radius of curvature by deducing the radius of the objects (assuming theyre spheres)
+        // from the dimensions of their collision model
+        ChVector<> bbminA, bbmaxA, bbminB, bbmaxB;
+        cinfo.modelA->GetAABB(bbminA, bbmaxA);
+        cinfo.modelB->GetAABB(bbminB, bbmaxB);
+        double radA = ((bbmaxA - bbminA).x() / 2.0) - cinfo.modelA->GetEnvelope(),
+               radB = ((bbmaxB - bbminB).x() / 2.0) - cinfo.modelB->GetEnvelope();
+        effRadius = radA * radB / (radA + radB);
+
+        // Extract parameters from containing system
+        ChSystemSMC* sys = static_cast<ChSystemSMC*>(this->container->GetSystem());
+        bool use_mat_props = sys->UsingMaterialProperties();
+        ChSystemSMC::ContactForceModel contact_model = sys->GetContactForceModel();
+
+        // Calculate effective mass
+        double eff_mass = this->objA->GetContactableMass() * this->objB->GetContactableMass() /
+                          (this->objA->GetContactableMass() + this->objB->GetContactableMass());
+
+        // Calculate composite material properties
+        ChMaterialCompositeSMC mat(
+            this->container->GetSystem()->composition_strategy.get(),
+            std::static_pointer_cast<ChMaterialSurfaceSMC>(this->objA->GetMaterialSurfaceBase()),
+            std::static_pointer_cast<ChMaterialSurfaceSMC>(this->objB->GetMaterialSurfaceBase()));
+
+        // Check for a user-provided callback to modify the material
+        if (this->container->GetAddContactCallback()) {
+            this->container->GetAddContactCallback()->OnAddContact(cinfo, &mat);
+        }
+
+        double delta = -this->norm_dist;
+
+        // Calculate stiffness and viscous damping coefficients.
+
+        switch (contact_model) {
+            case ChSystemSMC::Hooke:
+                if (use_mat_props) {
+                    double tmp_k = (16.0 / 15) * std::sqrt(effRadius) * mat.E_eff;
+                    double v2 = sys->GetCharacteristicImpactVelocity() * sys->GetCharacteristicImpactVelocity();
+                    double loge = (mat.cr_eff < CH_MICROTOL) ? std::log(CH_MICROTOL) : std::log(mat.cr_eff);
+                    loge = (mat.cr_eff > 1 - CH_MICROTOL) ? std::log(1 - CH_MICROTOL) : loge;
+                    double tmp_g = 1 + std::pow(CH_C_PI / loge, 2);
+                    kn = tmp_k * std::pow(eff_mass * v2 / tmp_k, 1.0 / 5);
+                    kt = kn;
+                    gn = std::sqrt(4 * eff_mass * kn / tmp_g);
+                    gt = gn;
+                } else {
+                    kn = mat.kn;
+                    kt = mat.kt;
+                    gn = eff_mass * mat.gn;
+                    gt = eff_mass * mat.gt;
+                }
+
+                break;
+
+            case ChSystemSMC::Hertz:
+                if (use_mat_props) {
+                    double sqrt_Rd = std::sqrt(effRadius * delta);
+                    double Sn = 2 * mat.E_eff * sqrt_Rd;
+                    double St = 8 * mat.G_eff * sqrt_Rd;
+                    double loge = (mat.cr_eff < CH_MICROTOL) ? std::log(CH_MICROTOL) : std::log(mat.cr_eff);
+                    double beta = loge / std::sqrt(loge * loge + CH_C_PI * CH_C_PI);
+                    kn = (2.0 / 3) * Sn;
+                    kt = St;
+                    gn = -2 * std::sqrt(5.0 / 6) * beta * std::sqrt(Sn * eff_mass);
+                    gt = -2 * std::sqrt(5.0 / 6) * beta * std::sqrt(St * eff_mass);
+                } else {
+                    double tmp = effRadius * std::sqrt(delta);
+                    kn = tmp * mat.kn;
+                    kt = tmp * mat.kt;
+                    gn = tmp * eff_mass * mat.gn;
+                    gt = tmp * eff_mass * mat.gt;
+                }
+
+                break;
+
+            case ChSystemSMC::PlainCoulomb:
+                if (use_mat_props) {
+                    double sqrt_Rd = std::sqrt(delta);
+                    double Sn = 2 * mat.E_eff * sqrt_Rd;
+                    double St = 8 * mat.G_eff * sqrt_Rd;
+                    double loge = (mat.cr_eff < CH_MICROTOL) ? std::log(CH_MICROTOL) : std::log(mat.cr_eff);
+                    double beta = loge / std::sqrt(loge * loge + CH_C_PI * CH_C_PI);
+                    kn = (2.0 / 3) * Sn;
+                    gn = -2 * std::sqrt(5.0 / 6) * beta * std::sqrt(Sn * eff_mass);
+                } else {
+                    double tmp = std::sqrt(delta);
+                    kn = tmp * mat.kn;
+                    gn = tmp * mat.gn;
+                }
+
+                kt = 0;
+                gt = 0;
+        }
+    }
+
     /// Calculate contact force, expressed in absolute coordinates.
     ChVector<> CalculateForce(
         double delta,                      ///< overlap in normal direction
@@ -147,100 +247,6 @@ class ChContactSMC : public ChContactTuple<Ta, Tb> {
         ChVector<> relvel_t = relvel - relvel_n;
         double relvel_t_mag = relvel_t.Length();
 
-        // Calculate effective mass
-        double eff_mass = this->objA->GetContactableMass() * this->objB->GetContactableMass() /
-                          (this->objA->GetContactableMass() + this->objB->GetContactableMass());
-
-        // Calculate stiffness and viscous damping coefficients.
-        // All models use the following formulas for normal and tangential forces:
-        //     Fn = kn * delta_n - gn * v_n
-        //     Ft = kt * delta_t - gt * v_t
-        double kn;
-        double kt;
-        double gn;
-        double gt;
-
-        switch (contact_model) {
-            case ChSystemSMC::Hooke:
-                if (use_mat_props) {
-                    double tmp_k = (16.0 / 15) * std::sqrt(this->eff_radius) * mat.E_eff;
-                    double v2 = sys->GetCharacteristicImpactVelocity() * sys->GetCharacteristicImpactVelocity();
-                    double loge = (mat.cr_eff < CH_MICROTOL) ? std::log(CH_MICROTOL) : std::log(mat.cr_eff);
-                    loge = (mat.cr_eff > 1 - CH_MICROTOL) ? std::log(1 - CH_MICROTOL) : loge;
-                    double tmp_g = 1 + std::pow(CH_C_PI / loge, 2);
-                    kn = tmp_k * std::pow(eff_mass * v2 / tmp_k, 1.0 / 5);
-                    kt = kn;
-                    gn = std::sqrt(4 * eff_mass * kn / tmp_g);
-                    gt = gn;
-                } else {
-                    kn = mat.kn;
-                    kt = mat.kt;
-                    gn = eff_mass * mat.gn;
-                    gt = eff_mass * mat.gt;
-                }
-
-                break;
-
-            case ChSystemSMC::Hertz:
-                if (use_mat_props) {
-                    double sqrt_Rd = std::sqrt(this->eff_radius * delta);
-                    double Sn = 2 * mat.E_eff * sqrt_Rd;
-                    double St = 8 * mat.G_eff * sqrt_Rd;
-                    double loge = (mat.cr_eff < CH_MICROTOL) ? std::log(CH_MICROTOL) : std::log(mat.cr_eff);
-                    double beta = loge / std::sqrt(loge * loge + CH_C_PI * CH_C_PI);
-                    kn = (2.0 / 3) * Sn;
-                    kt = St;
-                    gn = -2 * std::sqrt(5.0 / 6) * beta * std::sqrt(Sn * eff_mass);
-                    gt = -2 * std::sqrt(5.0 / 6) * beta * std::sqrt(St * eff_mass);
-                } else {
-                    double tmp = this->eff_radius * std::sqrt(delta);
-                    kn = tmp * mat.kn;
-                    kt = tmp * mat.kt;
-                    gn = tmp * eff_mass * mat.gn;
-                    gt = tmp * eff_mass * mat.gt;
-                }
-
-                break;
-
-            case ChSystemSMC::PlainCoulomb:
-                if (use_mat_props) {
-                    double sqrt_Rd = std::sqrt(delta);
-                    double Sn = 2 * mat.E_eff * sqrt_Rd;
-                    double St = 8 * mat.G_eff * sqrt_Rd;
-                    double loge = (mat.cr_eff < CH_MICROTOL) ? std::log(CH_MICROTOL) : std::log(mat.cr_eff);
-                    double beta = loge / std::sqrt(loge * loge + CH_C_PI * CH_C_PI);
-                    kn = (2.0 / 3) * Sn;
-                    gn = -2 * std::sqrt(5.0 / 6) * beta * std::sqrt(Sn * eff_mass);
-                } else {
-                    double tmp = std::sqrt(delta);
-                    kn = tmp * mat.kn;
-                    gn = tmp * mat.gn;
-                }
-
-                kt = 0;
-                gt = 0;
-
-                {
-                    double forceN = kn * delta - gn * relvel_n_mag;
-                    if (forceN < 0)
-                        forceN = 0;
-                    double forceT = mat.mu_eff * std::tanh(5.0 * relvel_t_mag) * forceN;
-                    switch (adhesion_model) {
-                        case ChSystemSMC::Constant:
-                            forceN -= mat.adhesion_eff;
-                            break;
-                        case ChSystemSMC::DMT:
-                            forceN -= mat.adhesionMultDMT_eff * sqrt(this->eff_radius);
-                            break;
-                    }
-                    ChVector<> force = forceN * normal_dir;
-                    if (relvel_t_mag >= sys->GetSlipVelocitythreshold())
-                        force -= (forceT / relvel_t_mag) * relvel_t;
-
-                    return force;
-                }
-        }
-
         // Tangential displacement (magnitude)
         double delta_t = 0;
         switch (tdispl_model) {
@@ -255,9 +261,11 @@ class ChContactSMC : public ChContactTuple<Ta, Tb> {
                 break;
         }
 
+        double forceN, forceT;
+
         // Calculate the magnitudes of the normal and tangential contact forces
-        double forceN = kn * delta - gn * relvel_n_mag;
-        double forceT = kt * delta_t + gt * relvel_t_mag;
+        forceN = kn * delta - gn * relvel_n_mag;
+        forceT = kt * delta_t + gt * relvel_t_mag;
 
         // If the resulting normal contact force is negative, the two shapes are moving
         // away from each other so fast that no contact force is generated.
@@ -272,7 +280,7 @@ class ChContactSMC : public ChContactTuple<Ta, Tb> {
                 forceN -= mat.adhesion_eff;
                 break;
             case ChSystemSMC::DMT:
-                forceN -= mat.adhesionMultDMT_eff * sqrt(this->eff_radius);
+                forceN -= mat.adhesionMultDMT_eff * sqrt(effRadius);
                 break;
         }
 
@@ -295,7 +303,7 @@ class ChContactSMC : public ChContactTuple<Ta, Tb> {
                     const ChStateDelta& stateB_w,       ///< state velocities for objB
                     const ChMaterialCompositeSMC& mat,  ///< composite material for contact pair
                     ChVectorDynamic<>& Q                ///< output generalized forces
-                    ) {
+    ) {
         // Express contact points in local frames.
         // We assume that these points remain fixed to their respective contactable objects.
         ChVector<> p1_loc = this->objA->GetCsysForCollisionModel().TransformPointParentToLocal(this->p1);
