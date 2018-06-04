@@ -17,11 +17,11 @@
 //
 // =============================================================================
 
-#include "chrono/physics/ChSystemSMC.h"
 #include "chrono/physics/ChContactContainerSMC.h"
+#include "chrono/physics/ChSystemSMC.h"
 
-#include "chrono/solver/ChSystemDescriptor.h"
 #include "chrono/solver/ChSolverSMC.h"
+#include "chrono/solver/ChSystemDescriptor.h"
 
 #include "chrono/collision/ChCCollisionSystemBullet.h"
 
@@ -72,6 +72,7 @@ class my_enum_mappers : public ChSystemSMC {
     CH_ENUM_MAPPER_BEGIN(ContactForceModel);
     CH_ENUM_VAL(Hooke);
     CH_ENUM_VAL(Hertz);
+    CH_ENUM_VAL(Flores);
     CH_ENUM_MAPPER_END(ContactForceModel);
 
     CH_ENUM_MAPPER_BEGIN(AdhesionForceModel);

@@ -29,12 +29,12 @@ namespace chrono {
 /// Class for a physical system in which contact is modeled using a smooth
 /// (penalty-based) method.
 class ChApi ChSystemSMC : public ChSystem {
-
   public:
     /// Enum for SMC contact type.
     enum ContactForceModel {
         Hooke,        ///< linear Hookean model
         Hertz,        ///< nonlinear Hertzian model
+        Flores,       ///< Flores model
         PlainCoulomb  ///< basic tangential force definition for non-granular bodies
     };
 
@@ -59,7 +59,7 @@ class ChApi ChSystemSMC : public ChSystem {
     ChSystemSMC(bool use_material_properties = true,  ///< use physical contact material properties
                 unsigned int max_objects = 16000,     ///< maximum number of contactable objects
                 double scene_size = 500               ///< approximate bounding radius of the scene
-                );
+    );
 
     /// Copy constructor
     ChSystemSMC(const ChSystemSMC& other);
@@ -71,9 +71,7 @@ class ChApi ChSystemSMC : public ChSystem {
 
     /// Return the contact method supported by this system.
     /// Bodies added to this system must be compatible.
-    virtual ChMaterialSurface::ContactMethod GetContactMethod() const override {
-        return ChMaterialSurface::SMC;
-    }
+    virtual ChMaterialSurface::ContactMethod GetContactMethod() const override { return ChMaterialSurface::SMC; }
 
     /// Create a new body, consistent with the contact method and collision model used by this system.
     /// The returned body is not added to the system.

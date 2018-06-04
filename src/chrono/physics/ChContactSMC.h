@@ -133,6 +133,12 @@ class ChContactSMC : public ChContactTuple<Ta, Tb> {
                radB = ((bbmaxB - bbminB).x() / 2.0) - cinfo.modelB->GetEnvelope();
         effRadius = radA * radB / (radA + radB);
 
+        // Calculate normal relative velocity at the start of the contact
+        ChVector<> velocity1 = this->objA->GetContactPointSpeed(this->p1),
+                   velocity2 = this->objB->GetContactPointSpeed(this->p2), normalDir = this->normal;
+        ChVector<> relvel = velocity2 - velocity1;
+        double pre_v_rel_mag = abs(relvel.Dot(normalDir));
+
         // Extract parameters from containing system
         ChSystemSMC* sys = static_cast<ChSystemSMC*>(this->container->GetSystem());
         bool use_mat_props = sys->UsingMaterialProperties();
@@ -191,6 +197,24 @@ class ChContactSMC : public ChContactTuple<Ta, Tb> {
                     gt = -2 * std::sqrt(5.0 / 6) * beta * std::sqrt(St * eff_mass);
                 } else {
                     double tmp = effRadius * std::sqrt(delta);
+                    kn = tmp * mat.kn;
+                    kt = tmp * mat.kt;
+                    gn = tmp * eff_mass * mat.gn;
+                    gt = tmp * eff_mass * mat.gt;
+                }
+
+                break;
+
+            case ChSystemSMC::Flores:
+                if (use_mat_props) {
+                    double cor = (mat.cr_eff < CH_MICROTOL) ? CH_MICROTOL : mat.cr_eff;
+                    cor = (mat.cr_eff > 1 - CH_MICROTOL) ? 1 - CH_MICROTOL : cor;
+                    kn = (4.0 / 3.0) * mat.E_eff * sqrt(effRadius);
+                    kt = kn;
+                    gn = 8.0 * (1.0 - cor) / (5.0 * cor * pre_v_rel_mag);
+                    gt = gn;
+                } else {
+                    double tmp = eff_radius * std::sqrt(delta);
                     kn = tmp * mat.kn;
                     kt = tmp * mat.kt;
                     gn = tmp * eff_mass * mat.gn;
@@ -264,8 +288,19 @@ class ChContactSMC : public ChContactTuple<Ta, Tb> {
         double forceN, forceT;
 
         // Calculate the magnitudes of the normal and tangential contact forces
-        forceN = kn * delta - gn * relvel_n_mag;
-        forceT = kt * delta_t + gt * relvel_t_mag;
+        switch (contact_model) {
+            case ChSystemSMC::Hooke:
+            case ChSystemSMC::Hertz:
+            case ChSystemSMC::PlainCoulomb:
+                forceN = kn * delta - gn * relvel_n_mag;
+                forceT = kt * delta_t + gt * relvel_t_mag;
+                break;
+
+            case ChSystemSMC::Flores:
+                forceN = kn * pow(delta, 3.0 / 2.0) * (1 - gn * relvel_n_mag);
+                forceT = kt * pow(delta, 3.0 / 2.0) * (1 - gn * relvel_n_mag);
+                break;
+        }
 
         // If the resulting normal contact force is negative, the two shapes are moving
         // away from each other so fast that no contact force is generated.
