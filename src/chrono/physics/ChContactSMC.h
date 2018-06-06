@@ -186,9 +186,9 @@ class ChContactSMC : public ChContactTuple<Ta, Tb> {
 
             case ChSystemSMC::Hertz:
                 if (use_mat_props) {
-                    double sqrt_Rd = std::sqrt(effRadius * delta);
-                    double Sn = 2 * mat.E_eff * sqrt_Rd;
-                    double St = 8 * mat.G_eff * sqrt_Rd;
+                    double sqrt_R = std::sqrt(effRadius);
+                    double Sn = 2 * mat.E_eff * sqrt_R;
+                    double St = 8 * mat.G_eff * sqrt_R;
                     double loge = (mat.cr_eff < CH_MICROTOL) ? std::log(CH_MICROTOL) : std::log(mat.cr_eff);
                     double beta = loge / std::sqrt(loge * loge + CH_C_PI * CH_C_PI);
                     kn = (2.0 / 3) * Sn;
@@ -209,7 +209,7 @@ class ChContactSMC : public ChContactTuple<Ta, Tb> {
                 if (use_mat_props) {
                     double cor = (mat.cr_eff < CH_MICROTOL) ? CH_MICROTOL : mat.cr_eff;
                     cor = (mat.cr_eff > 1 - CH_MICROTOL) ? 1 - CH_MICROTOL : cor;
-                    kn = (4.0 / 3.0) * mat.E_eff * sqrt(effRadius);
+                    kn = (4.0 / 3.0) * mat.E_eff * std::sqrt(effRadius);
                     kt = kn;
                     gn = 8.0 * (1.0 - cor) / (5.0 * cor * pre_v_rel_mag);
                     gt = gn;
@@ -225,9 +225,8 @@ class ChContactSMC : public ChContactTuple<Ta, Tb> {
 
             case ChSystemSMC::PlainCoulomb:
                 if (use_mat_props) {
-                    double sqrt_Rd = std::sqrt(delta);
-                    double Sn = 2 * mat.E_eff * sqrt_Rd;
-                    double St = 8 * mat.G_eff * sqrt_Rd;
+                    double Sn = 2 * mat.E_eff;
+                    double St = 8 * mat.G_eff;
                     double loge = (mat.cr_eff < CH_MICROTOL) ? std::log(CH_MICROTOL) : std::log(mat.cr_eff);
                     double beta = loge / std::sqrt(loge * loge + CH_C_PI * CH_C_PI);
                     kn = (2.0 / 3) * Sn;
@@ -290,10 +289,15 @@ class ChContactSMC : public ChContactTuple<Ta, Tb> {
         // Calculate the magnitudes of the normal and tangential contact forces
         switch (contact_model) {
             case ChSystemSMC::Hooke:
-            case ChSystemSMC::Hertz:
-            case ChSystemSMC::PlainCoulomb:
+           // case ChSystemSMC::Flores:
                 forceN = kn * delta - gn * relvel_n_mag;
-                forceT = kt * delta_t + gt * relvel_t_mag;
+                forceT = kt * delta_t - gt * relvel_t_mag;
+                break;
+
+			case ChSystemSMC::Hertz:
+            case ChSystemSMC::PlainCoulomb:
+                forceN = kn * pow(delta, 3.0 / 2.0) - gn * pow(delta, 1.0 / 4.0) * relvel_n_mag;
+                forceT = kt * pow(delta_t, 3.0 / 2.0) - gt * pow(delta_t, 1.0 / 4.0) * relvel_t_mag;
                 break;
 
             case ChSystemSMC::Flores:
