@@ -54,6 +54,7 @@ ChSystemSMC::ChSystemSMC(bool use_material_properties, unsigned int max_objects,
 
     m_minSlipVelocity = 1e-4;
     m_characteristicVelocity = 1;
+    m_slipRegularizingVelocity = 0.4;
 }
 
 ChSystemSMC::ChSystemSMC(const ChSystemSMC& other) : ChSystem(other) {}

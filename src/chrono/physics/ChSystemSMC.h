@@ -123,6 +123,10 @@ class ChApi ChSystemSMC : public ChSystem {
     void SetCharacteristicImpactVelocity(double vel) { m_characteristicVelocity = vel; }
     double GetCharacteristicImpactVelocity() const { return m_characteristicVelocity; }
 
+	/// Slip regularizing velocity
+    void SetSlipRegularizingVelocity(double vel) { m_slipRegularizingVelocity = vel; }
+    double GetSlipRegularizingVelocity() const { return m_slipRegularizingVelocity; }
+
     //
     // SERIALIZATION
     //
@@ -141,6 +145,7 @@ class ChApi ChSystemSMC : public ChSystem {
     bool m_stiff_contact;                        ///< flag indicating stiff contacts (triggers Jacobian calculation)
     double m_minSlipVelocity;                    ///< slip velocity below which no tangential forces are generated
     double m_characteristicVelocity;             ///< characteristic impact velocity (Hooke model)
+    double m_slipRegularizingVelocity;           ///< Coulomb's law is linearly scaled to 0 for tangential velocity under this value
 };
 
 CH_CLASS_VERSION(ChSystemSMC, 0)

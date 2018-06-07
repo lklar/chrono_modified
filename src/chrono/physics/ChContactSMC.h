@@ -124,6 +124,10 @@ class ChContactSMC : public ChContactTuple<Ta, Tb> {
     /// Calculate coefficents of stiffness and dampening, effective radius of curvature and pre-contact velocity for
     /// this contact
     void SetParameters(Ta* mobjA, Tb* mobjB, const collision::ChCollisionInfo& cinfo) {
+        GetLog() << "\n\n\n";
+		GetLog() << "F_t" << "\t\t" << "delta_t" << "\t\t" << "v_t" << "\t\t" << "delta" << "\t\t" << "v_n" << "\t\t"
+                 << "mu * F_n"<< "\n\n";
+
         // Calculate effective radius of curvature by deducing the radius of the objects (assuming theyre spheres)
         // from the dimensions of their collision model
         ChVector<> bbminA, bbmaxA, bbminB, bbmaxB;
@@ -289,31 +293,29 @@ class ChContactSMC : public ChContactTuple<Ta, Tb> {
         // Calculate the magnitudes of the normal and tangential contact forces
         switch (contact_model) {
             case ChSystemSMC::Hooke:
-           // case ChSystemSMC::Flores:
                 forceN = kn * delta - gn * relvel_n_mag;
-                forceT = kt * delta_t - gt * relvel_t_mag;
                 break;
 
 			case ChSystemSMC::Hertz:
             case ChSystemSMC::PlainCoulomb:
-                forceN = kn * pow(delta, 3.0 / 2.0) - gn * pow(delta, 1.0 / 4.0) * relvel_n_mag;
-                forceT = kt * pow(delta_t, 3.0 / 2.0) - gt * pow(delta_t, 1.0 / 4.0) * relvel_t_mag;
+                forceN = kn * pow(delta, 1.5) - gn * pow(delta, 0.25) * relvel_n_mag;
                 break;
 
             case ChSystemSMC::Flores:
-                forceN = kn * pow(delta, 3.0 / 2.0) * (1 - gn * relvel_n_mag);
-                forceT = kt * pow(delta, 3.0 / 2.0) * (1 - gn * relvel_n_mag);
+                forceN = kn * pow(delta, 1.5) * (1 - gn * relvel_n_mag);
                 break;
         }
+        //std::cout << std::fixed << std::setprecision(6) << std::scientific;
+        //std::cout << forceT << "\t" << delta_t << "\t" << relvel_t_mag << "\t";
+        //std::cout << delta << "\t" << relvel_n_mag << "\t" << mat.mu_eff * std::abs(forceN) << "\n";
 
-        // If the resulting normal contact force is negative, the two shapes are moving
-        // away from each other so fast that no contact force is generated.
-        if (forceN < 0) {
+		//std::cin.sync();
+        //std::cin.ignore();
+
+		if (forceN < 0)
             forceN = 0;
-            forceT = 0;
-        }
-
-        // Include adhesion force
+        //forceT = mat.mu_eff * std::tanh(5.0 * relvel_t_mag) * forceN;
+        forceT = mat.mu_eff * std::min<double>(1, relvel_t_mag / sys->GetSlipRegularizingVelocity()) * forceN;
         switch (adhesion_model) {
             case ChSystemSMC::Constant:
                 forceN -= mat.adhesion_eff;
@@ -322,11 +324,6 @@ class ChContactSMC : public ChContactTuple<Ta, Tb> {
                 forceN -= mat.adhesionMultDMT_eff * sqrt(effRadius);
                 break;
         }
-
-        // Coulomb law
-        forceT = std::min<double>(forceT, mat.mu_eff * std::abs(forceN));
-
-        // Accumulate normal and tangential forces
         ChVector<> force = forceN * normal_dir;
         if (relvel_t_mag >= sys->GetSlipVelocitythreshold())
             force -= (forceT / relvel_t_mag) * relvel_t;
