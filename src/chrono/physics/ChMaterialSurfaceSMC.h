@@ -30,6 +30,7 @@ class ChApi ChMaterialSurfaceSMC : public ChMaterialSurface {
     float static_friction;    ///< Static coefficient of friction
     float sliding_friction;   ///< Kinetic coefficient of friction
     float rolling_friction;   ///< Rolling coefficient of friction
+    float twisting_friction;  ///< Twisting coefficient of friction
     float restitution;        ///< Coefficient of restitution
     float constant_adhesion;  ///< Constant adhesion force, when constant adhesion model is used
     float adhesionMultDMT;    ///< Adhesion multiplier used in DMT model.
@@ -72,9 +73,14 @@ class ChApi ChMaterialSurfaceSMC : public ChMaterialSurface {
     void SetKfriction(float val) { sliding_friction = val; }
 
     /// Rolling friction coefficient.
-    /// Usuall around 1E-3
+    /// Usually around 1E-3
     float GetRfriction() const { return rolling_friction; }
     void SetRfriction(float val) { rolling_friction = val; }
+
+	/// Twisting friction coefficient.
+	/// Usually around 1E-3
+    float GetTfriction() const { return twisting_friction; }
+    void SetTfriction(float val) { twisting_friction = val; }
     
     /// Set both static friction and kinetic friction at once, with same value.
     void SetFriction(float val);
@@ -122,6 +128,7 @@ class ChApi ChMaterialCompositeSMC : public ChMaterialComposite {
     float G_eff;                ///< Effective shear modulus
     float mu_eff;               ///< Effective coefficient of friction
     float muR_eff;              ///< Effective coefficient of rolling friction
+    float muT_eff;              ///< Effective coefficient of twisting friction
     float cr_eff;               ///< Effective coefficient of restitution
     float adhesion_eff;         ///< Effective cohesion force
     float adhesionMultDMT_eff;  ///< Effective adhesion multiplier (DMT model)
