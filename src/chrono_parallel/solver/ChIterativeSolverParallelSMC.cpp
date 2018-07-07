@@ -65,6 +65,7 @@ void function_CalcContactForces(
     real* cr,                                             // coefficient of restitution (per body)
     real4* smc_coeffs,                                    // stiffness and damping coefficients (per body)
     real* mu,                                             // coefficient of friction (per body)
+	real* muR,                                            // coefficient of rolling friction (per body)
     real* adhesion,                                       // constant force (per body)
     real* adhesionMultDMT,                                // Adhesion force multiplier (per body), in DMT model.
     vec2* body_id,                                        // body IDs (per contact)
@@ -80,7 +81,7 @@ void function_CalcContactForces(
     int* ext_body_id,       // [output] body IDs (two per contact)
     real3* ext_body_force,  // [output] body force (two per contact)
     real3* ext_body_torque  // [output] body torque (two per contact)
-    ) {
+) {
     // Identify the two bodies in contact.
     int body1 = body_id[index].x;
     int body2 = body_id[index].y;
@@ -131,6 +132,7 @@ void function_CalcContactForces(
     real m_eff = mass[body1] * mass[body2] / (mass[body1] + mass[body2]);
 
     real mu_eff = strategy->CombineFriction(mu[body1], mu[body2]);
+    real muR_eff = strategy->CombineFriction(muR[body1], muR[body2]);
     real adhesion_eff = strategy->CombineCohesion(adhesion[body1], adhesion[body2]);
     real adhesionMultDMT_eff = strategy->CombineAdhesionMultiplier(adhesionMultDMT[body1], adhesionMultDMT[body2]);
 
@@ -443,7 +445,7 @@ void ChIterativeSolverParallelSMC::host_CalcContactForces(custom_vector<int>& ex
             data_manager->host_data.pos_rigid.data(), data_manager->host_data.rot_rigid.data(),
             data_manager->host_data.v.data(), data_manager->host_data.elastic_moduli.data(),
             data_manager->host_data.cr.data(), data_manager->host_data.smc_coeffs.data(),
-            data_manager->host_data.mu.data(), data_manager->host_data.cohesion_data.data(),
+            data_manager->host_data.mu.data(), data_manager->host_data.muR.data(), data_manager->host_data.cohesion_data.data(),
             data_manager->host_data.adhesionMultDMT_data.data(), data_manager->host_data.bids_rigid_rigid.data(),
             shape_pairs.data(), data_manager->host_data.cpta_rigid_rigid.data(),
             data_manager->host_data.cptb_rigid_rigid.data(), data_manager->host_data.norm_rigid_rigid.data(),
@@ -557,18 +559,18 @@ void ChIterativeSolverParallelSMC::ProcessContacts() {
     // zip iterators.
     uint ct_body_count =
         (uint)(thrust::reduce_by_key(
-            THRUST_PAR ext_body_id.begin(), ext_body_id.end(),
-            thrust::make_zip_iterator(thrust::make_tuple(ext_body_force.begin(), ext_body_torque.begin())),
-            ct_body_id.begin(),
-            thrust::make_zip_iterator(thrust::make_tuple(ct_body_force.begin(), ct_body_torque.begin())),
-            #if defined _WIN32
-            // Windows compilers require an explicit-width type
-                thrust::equal_to<int64_t>(), sum_tuples()
-            #else
-                thrust::equal_to<int>(), sum_tuples()
-            #endif
-            ).first -
-        ct_body_id.begin());
+                   THRUST_PAR ext_body_id.begin(), ext_body_id.end(),
+                   thrust::make_zip_iterator(thrust::make_tuple(ext_body_force.begin(), ext_body_torque.begin())),
+                   ct_body_id.begin(),
+                   thrust::make_zip_iterator(thrust::make_tuple(ct_body_force.begin(), ct_body_torque.begin())),
+#if defined _WIN32
+                   // Windows compilers require an explicit-width type
+                   thrust::equal_to<int64_t>(), sum_tuples()
+#else
+                   thrust::equal_to<int>(), sum_tuples()
+#endif
+                       ).first -
+               ct_body_id.begin());
 
     ct_body_force.resize(ct_body_count);
     ct_body_torque.resize(ct_body_count);
