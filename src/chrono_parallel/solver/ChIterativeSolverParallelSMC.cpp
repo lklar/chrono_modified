@@ -360,18 +360,6 @@ void function_CalcContactForces(
         forceT_damp.z = 0;
     }
 
-    // Include adhesion force.
-    switch (adhesion_model) {
-        case ChSystemSMC::AdhesionForceModel::Constant:
-            // (This is a very simple model, which can perhaps be improved later.)
-            forceN_mag -= adhesion_eff;
-            break;
-        case ChSystemSMC::AdhesionForceModel::DMT:
-            // Derjaguin, Muller and Toporov (DMT) adhesion force,
-            forceN_mag -= adhesionMultDMT_eff * Sqrt(eff_radius[index]);
-            break;
-    }
-
     // Apply Coulomb friction law.
     // We must enforce force_T_mag <= mu_eff * |forceN_mag|.
     // If force_T_mag > mu_eff * |forceN_mag| and there is shear displacement
@@ -417,6 +405,18 @@ void function_CalcContactForces(
     //    n' = s' x F' = s' x (A*F)
     real3 torque1_loc = Cross(pt1_loc, RotateT(force, rot[body1]));
     real3 torque2_loc = Cross(pt2_loc, RotateT(force, rot[body2]));
+
+    // Include adhesion force.
+    switch (adhesion_model) {
+        case ChSystemSMC::AdhesionForceModel::Constant:
+            // (This is a very simple model, which can perhaps be improved later.)
+            forceN_mag -= adhesion_eff;
+            break;
+        case ChSystemSMC::AdhesionForceModel::DMT:
+            // Derjaguin, Muller and Toporov (DMT) adhesion force,
+            forceN_mag -= adhesionMultDMT_eff * Sqrt(eff_radius[index]);
+            break;
+    }
 
     // Store body forces and torques, duplicated for the two bodies.
     ext_body_id[2 * index] = body1;
