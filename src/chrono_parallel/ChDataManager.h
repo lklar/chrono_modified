@@ -289,8 +289,9 @@ struct host_container {
     custom_vector<real3> ct_body_torque;  ///< Total contact torque on these bodies
 
     // Contact shear history (SMC)
-    custom_vector<vec3> shear_neigh;  ///< Neighbor list of contacting bodies and shapes
-    custom_vector<real3> shear_disp;  ///< Accumulated shear displacement for each neighbor
+    custom_vector<vec3> shear_neigh;    ///< Neighbor list of contacting bodies and shapes
+    custom_vector<real3> shear_disp;    ///< Accumulated shear displacement for each neighbor
+    custom_vector<real4> contact_coeff; ///< Stiffness and dampness coefficients per contact pair
 
     /// Mapping from all bodies in the system to bodies involved in a contact.
     /// For bodies that are currently not in contact, the mapping entry is -1.

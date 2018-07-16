@@ -37,7 +37,6 @@
 #include <cstdint>
 #endif
 
-
 using namespace chrono;
 
 // -----------------------------------------------------------------------------
@@ -56,6 +55,8 @@ void function_CalcContactForces(
     bool use_mat_props,                                   // flag specifying how coefficients are obtained
     real char_vel,                                        // characteristic velocity (Hooke)
     real min_slip_vel,                                    // threshold tangential velocity
+    real min_roll_vel,                                    // threshold rolling velocity
+    real min_twist_vel,                                   // threshold twisting velocity
     real dT,                                              // integration time step
     real* mass,                                           // body masses
     real3* pos,                                           // body positions
@@ -79,6 +80,7 @@ void function_CalcContactForces(
     vec3* shear_neigh,      // neighbor list of contacting bodies and shapes (max_shear per body)
     char* shear_touch,      // flag if contact in neighbor list is persistent (max_shear per body)
     real3* shear_disp,      // accumulated shear displacement for each neighbor (max_shear per body)
+    real4* contact_coeff,   // stiffness and dampness coefficients per contact pair (max_shear per body)
     int* ext_body_id,       // [output] body IDs (two per contact)
     real3* ext_body_force,  // [output] body force (two per contact)
     real3* ext_body_torque  // [output] body torque (two per contact)
@@ -224,6 +226,60 @@ void function_CalcContactForces(
                     shear_disp[ctIdUnrolled].x = 0;
                     shear_disp[ctIdUnrolled].y = 0;
                     shear_disp[ctIdUnrolled].z = 0;
+                    switch (contact_model) {
+                        case ChSystemSMC::ContactForceModel::Hooke:
+                            if (use_mat_props) {
+                                real tmp_k = (16.0 / 15) * Sqrt(eff_radius[index]) * E_eff;
+                                real v2 = char_vel * char_vel;
+                                real loge = (cr_eff < CH_MICROTOL) ? Log(CH_MICROTOL) : Log(cr_eff);
+                                loge = (cr_eff > 1 - CH_MICROTOL) ? Log(1 - CH_MICROTOL) : loge;
+                                real tmp_g = 1 + Pow(CH_C_PI / loge, 2);
+                                contact_coeff[ctIdUnrolled].x = tmp_k * Pow(m_eff * v2 / tmp_k, 1.0 / 5);
+                                contact_coeff[ctIdUnrolled].y = contact_coeff[ctIdUnrolled].x;
+                                contact_coeff[ctIdUnrolled].z = Sqrt(4 * m_eff * kn / tmp_g);
+                                contact_coeff[ctIdUnrolled].w = contact_coeff[ctIdUnrolled].z;
+                            } else {
+                                contact_coeff[ctIdUnrolled].x = user_kn;
+                                contact_coeff[ctIdUnrolled].y = user_kt;
+                                contact_coeff[ctIdUnrolled].z = m_eff * user_gn;
+                                contact_coeff[ctIdUnrolled].w = m_eff * user_gt;
+                            }
+                            break;
+
+                        case ChSystemSMC::ContactForceModel::Hertz:
+                            if (use_mat_props) {
+                                real sqrt_R = Sqrt(eff_radius[index]);
+                                real Sn = 2 * E_eff * sqrt_R;
+                                real St = 8 * G_eff * sqrt_R;
+                                real loge = (cr_eff < CH_MICROTOL) ? Log(CH_MICROTOL) : Log(cr_eff);
+                                real beta = loge / Sqrt(loge * loge + CH_C_PI * CH_C_PI);
+                                contact_coeff[ctIdUnrolled].x = (2.0 / 3) * Sn;
+                                contact_coeff[ctIdUnrolled].y = St;
+                                contact_coeff[ctIdUnrolled].z = -2 * Sqrt(5.0 / 6) * beta * Sqrt(Sn * m_eff);
+                                contact_coeff[ctIdUnrolled].w = -2 * Sqrt(5.0 / 6) * beta * Sqrt(St * m_eff);
+                            } else {
+                                real tmp = eff_radius[index] * Sqrt(delta_n);
+                                contact_coeff[ctIdUnrolled].x = tmp * user_kn;
+                                contact_coeff[ctIdUnrolled].y = tmp * user_kt;
+                                contact_coeff[ctIdUnrolled].z = tmp * m_eff * user_gn;
+                                contact_coeff[ctIdUnrolled].w = tmp * m_eff * user_gt;
+                            }
+                            break;
+
+                        case ChSystemSMC::ContactForceModel::PlainCoulomb:
+                            if (use_mat_props) {
+                                real Sn = 2 * E_eff;
+                                real St = 8 * G_eff;
+                                real loge = (cr_eff < CH_MICROTOL) ? Log(CH_MICROTOL) : Log(cr_eff);
+                                real beta = loge / Sqrt(loge * loge + CH_C_PI * CH_C_PI);
+                                contact_coeff[ctIdUnrolled].x = (2.0 / 3) * Sn;
+                                contact_coeff[ctIdUnrolled].y = -2 * Sqrt(5.0 / 6) * beta * Sqrt(Sn * m_eff);
+                            } else {
+                                real tmp = Sqrt(delta_n);
+                                contact_coeff[ctIdUnrolled].x = tmp * user_kn;
+                                contact_coeff[ctIdUnrolled].y = tmp * user_gn;
+                            }
+                    }
                     break;
                 }
             }
@@ -245,97 +301,12 @@ void function_CalcContactForces(
             shear_disp[ctSaveId] -= Dot(shear_disp[ctSaveId], normal[index]) * normal[index];
             delta_t = -shear_disp[ctSaveId];
         }
-    }
 
-    switch (contact_model) {
-        case ChSystemSMC::ContactForceModel::Hooke:
-            if (use_mat_props) {
-                real tmp_k = (16.0 / 15) * Sqrt(eff_radius[index]) * E_eff;
-                real v2 = char_vel * char_vel;
-                real loge = (cr_eff < CH_MICROTOL) ? Log(CH_MICROTOL) : Log(cr_eff);
-                loge = (cr_eff > 1 - CH_MICROTOL) ? Log(1 - CH_MICROTOL) : loge;
-                real tmp_g = 1 + Pow(CH_C_PI / loge, 2);
-                kn = tmp_k * Pow(m_eff * v2 / tmp_k, 1.0 / 5);
-                kt = kn;
-                gn = Sqrt(4 * m_eff * kn / tmp_g);
-                gt = gn;
-            } else {
-                kn = user_kn;
-                kt = user_kt;
-                gn = m_eff * user_gn;
-                gt = m_eff * user_gt;
-            }
-
-            break;
-
-        case ChSystemSMC::ContactForceModel::Hertz:
-            if (use_mat_props) {
-                real sqrt_Rd = Sqrt(eff_radius[index] * delta_n);
-                real Sn = 2 * E_eff * sqrt_Rd;
-                real St = 8 * G_eff * sqrt_Rd;
-                real loge = (cr_eff < CH_MICROTOL) ? Log(CH_MICROTOL) : Log(cr_eff);
-                real beta = loge / Sqrt(loge * loge + CH_C_PI * CH_C_PI);
-                kn = (2.0 / 3) * Sn;
-                kt = St;
-                gn = -2 * Sqrt(5.0 / 6) * beta * Sqrt(Sn * m_eff);
-                gt = -2 * Sqrt(5.0 / 6) * beta * Sqrt(St * m_eff);
-            } else {
-                real tmp = eff_radius[index] * Sqrt(delta_n);
-                kn = tmp * user_kn;
-                kt = tmp * user_kt;
-                gn = tmp * m_eff * user_gn;
-                gt = tmp * m_eff * user_gt;
-            }
-
-            break;
-
-        case ChSystemSMC::ContactForceModel::PlainCoulomb:
-            if (use_mat_props) {
-                real sqrt_Rd = Sqrt(delta_n);
-                real Sn = 2 * E_eff * sqrt_Rd;
-                real St = 8 * G_eff * sqrt_Rd;
-                real loge = (cr_eff < CH_MICROTOL) ? Log(CH_MICROTOL) : Log(cr_eff);
-                real beta = loge / Sqrt(loge * loge + CH_C_PI * CH_C_PI);
-                kn = (2.0 / 3) * Sn;
-                gn = -2 * Sqrt(5.0 / 6) * beta * Sqrt(Sn * m_eff);
-            } else {
-                real tmp = Sqrt(delta_n);
-                kn = tmp * user_kn;
-                gn = tmp * user_gn;
-            }
-
-            kt = 0;
-            gt = 0;
-
-            {
-                real forceN_mag = kn * delta_n - gn * relvel_n_mag;
-                if (forceN_mag < 0)
-                    forceN_mag = 0;
-                real forceT_mag = mu_eff * Tanh(5.0 * relvel_t_mag) * forceN_mag;
-                switch (adhesion_model) {
-                    case ChSystemSMC::AdhesionForceModel::Constant:
-                        forceN_mag -= adhesion_eff;
-                        break;
-                    case ChSystemSMC::AdhesionForceModel::DMT:
-                        forceN_mag -= adhesionMultDMT_eff * Sqrt(eff_radius[index]);
-                        break;
-                }
-                real3 force = forceN_mag * normal[index];
-                if (relvel_t_mag >= (real)1e-4)
-                    force -= (forceT_mag / relvel_t_mag) * relvel_t;
-
-                real3 torque1_loc = Cross(pt1_loc, RotateT(force, rot[body1]));
-                real3 torque2_loc = Cross(pt2_loc, RotateT(force, rot[body2]));
-
-                ext_body_id[2 * index] = body1;
-                ext_body_id[2 * index + 1] = body2;
-                ext_body_force[2 * index] = -force;
-                ext_body_force[2 * index + 1] = force;
-                ext_body_torque[2 * index] = -torque1_loc;
-                ext_body_torque[2 * index + 1] = torque2_loc;
-            }
-
-            return;
+        // Load stiffness and dampness coefficients from contact history
+        kn = contact_coeff[ctSaveId].x;
+        kt = contact_coeff[ctSaveId].y;
+        gn = contact_coeff[ctSaveId].z;
+        gt = contact_coeff[ctSaveId].w;
     }
 
     // Calculate the the normal and tangential contact forces.
@@ -344,9 +315,52 @@ void function_CalcContactForces(
     // The tangential force is a vector with two parts: one depends on the stored
     // contact history tangential (or shear) displacement vector delta_t, and the
     // other depends on the current relative velocity vector (for viscous damping).
-    real forceN_mag = kn * delta_n - gn * relvel_n_mag;
-    real3 forceT_stiff = kt * delta_t;
-    real3 forceT_damp = gt * relvel_t;
+
+    real forceN_mag;
+    real3 forceT_stiff, forceT_damp;
+
+    switch (contact_model) {
+        case ChSystemSMC::Hooke:
+            forceN_mag = kn * delta_n - gn * relvel_n_mag;
+            forceT_stiff = kt * delta_t;
+            forceT_damp = gt * relvel_t;
+            break;
+
+        case ChSystemSMC::Hertz:
+            forceN_mag = kn * Pow(delta_n, 1.5) - gn * Pow(delta_n, 0.25) * relvel_n_mag;
+            forceT_stiff = kt * Pow(delta_n, 0.5) * delta_t;
+            forceT_damp = gt * Pow(delta_n, 0.25) * relvel_t;
+            break;
+
+        case ChSystemSMC::PlainCoulomb: {
+            forceN_mag = kn * Pow(delta_n, 1.5) - gn * Pow(delta_n, 0.25) * relvel_n_mag;
+            if (forceN_mag < 0)
+                forceN_mag = 0;
+            real forceT_mag = mu_eff * Tanh(5.0 * relvel_t_mag) * forceN_mag;
+            switch (adhesion_model) {
+                case ChSystemSMC::AdhesionForceModel::Constant:
+                    forceN_mag -= adhesion_eff;
+                    break;
+                case ChSystemSMC::AdhesionForceModel::DMT:
+                    forceN_mag -= adhesionMultDMT_eff * Sqrt(eff_radius[index]);
+                    break;
+            }
+            real3 force = forceN_mag * normal[index];
+            if (relvel_t_mag >= (real)1e-4)
+                force -= (forceT_mag / relvel_t_mag) * relvel_t;
+
+            real3 torque1_loc = Cross(pt1_loc, RotateT(force, rot[body1]));
+            real3 torque2_loc = Cross(pt2_loc, RotateT(force, rot[body2]));
+
+            ext_body_id[2 * index] = body1;
+            ext_body_id[2 * index + 1] = body2;
+            ext_body_force[2 * index] = -force;
+            ext_body_force[2 * index + 1] = force;
+            ext_body_torque[2 * index] = -torque1_loc;
+            ext_body_torque[2 * index + 1] = torque2_loc;
+            return;
+        }
+    }
 
     // If the resulting normal force is negative, then the two shapes are
     // moving away from each other so fast that no contact force is generated.
@@ -405,44 +419,48 @@ void function_CalcContactForces(
     //    n' = s' x F' = s' x (A*F)
     real3 torque1_loc = Cross(pt1_loc, RotateT(force, rot[body1]));
     real3 torque2_loc = Cross(pt2_loc, RotateT(force, rot[body2]));
- 
-    // Calculate rolling friction torque as M_roll = µ_r * l_p * (F_N x v_rot) / |v_rot|
-    real3 v_rot = Rotate(Cross(o_body1, pt1_loc), rot[body1]) - Rotate(Cross(o_body2, pt2_loc), rot[body2]);
-    if (Length(v_rot) > 1e-5) {
-        torque1_loc += muR_eff * (Length(pt1_loc) - delta_n) * Cross(forceN_mag * normal[index], v_rot) / Length(v_rot);
-        //torque2_loc += muR_eff * (Length(pt2_loc) - delta_n) * Cross(forceN_mag * normal[index], v_rot) / Length(v_rot);
-    }
 
+    
+    // Calculate rolling friction torque as M_roll = µ_r * l_p * (F_N x v_rot) / |v_rot|
+    //real3 v_rot = Rotate(Cross(o_body1, pt1_loc), rot[body1]) - Rotate(Cross(o_body2, pt2_loc), rot[body2]);
+    //if (Length(v_rot) > min_roll_vel) {
+    //    torque1_loc += muR_eff * (Length(pt1_loc) - delta_n) * Cross(forceN_mag * normal[index], v_rot) / Length(v_rot);
+    //    torque2_loc += muR_eff * (Length(pt2_loc) - delta_n) * Cross(forceN_mag * normal[index], v_rot) /
+    //    Length(v_rot);
+    //}
+
+    GetLog() << "\n" << min_roll_vel << "\t" << min_twist_vel;
     // Calculate twisting friction torque as M_twist = -µ_t * r_c * (w_n - w_p) . F_n / ((w_n - w_p) . n)
     // r_c is the radius of the circle resulting from the intersecting body surfaces
-    if (abs(Dot(o_body1 - o_body2, normal[index])) > 1e-5) {
+    if (abs(Dot(o_body1 - o_body2, normal[index])) > min_twist_vel) {
         double R1 = Length(pt1_loc), R2 = Length(pt2_loc);
         double R_center = (R1 * R1 - R2 * R2) / (2 * (R1 + R2 - delta_n)) + 0.5 * (R1 + R2 - delta_n);
         double r_c = sqrt(pow(R1, 2) - pow(R_center, 2));
-        torque1_loc += muT_eff * r_c * (Dot(o_body2 - o_body1, forceN_mag * normal[index]) /
-                       Dot(o_body1 - o_body2, normal[index])) * normal[index];
-        torque2_loc += muT_eff * r_c * (Dot(o_body2 - o_body1, forceN_mag * normal[index]) / 
-                       Dot(o_body1 - o_body2, normal[index])) * normal[index];
+        torque1_loc -= muT_eff * r_c *
+                       (Dot(o_body2 - o_body1, forceN_mag * normal[index]) / Length(o_body1 - o_body2)) * normal[index];
+        torque2_loc -= muT_eff * r_c *
+                       (Dot(o_body2 - o_body1, forceN_mag * normal[index]) / Length(o_body1 - o_body2)) * normal[index];
     }
+    
 
-    real3 buff1 = v_rot, buff2 = v_rot;
-    // GetLog() << Length(o_body1) << "\t" << Length(o_body2) << "\t" << Length(v_rot);
+    //real3 buff1 = v_rot, buff2 = v_rot;
+    //GetLog() << Length(o_body1) << "\t" << Length(o_body2);
     // GetLog() << Length(torque1_loc) << "\t" << Length(torque2_loc) << "\t" << o_body1.z << "\t" << o_body2.z << "\n";
     // GetLog() << Length(buff1) << "\t" << buff1.x << "\t" << buff1.y << "\t" << buff1.z << "\t";
     // GetLog() << Length(buff2) << "\t" << buff2.x << "\t" << buff2.y << "\t" << buff2.z << "\t";
     // GetLog() << Length(o_body1) << "\t" << Length(o_body2) << "\t" << delta_n << "\t" << Length(Cross(forceN_mag *
     // normal[index], v_rot)) << "\n";
-    GetLog() << "\n";
+    //GetLog() << "\n";
 
     // Include adhesion force.
     switch (adhesion_model) {
         case ChSystemSMC::AdhesionForceModel::Constant:
             // (This is a very simple model, which can perhaps be improved later.)
-            forceN_mag -= adhesion_eff;
+            force -= adhesion_eff * normal[index];
             break;
         case ChSystemSMC::AdhesionForceModel::DMT:
             // Derjaguin, Muller and Toporov (DMT) adhesion force,
-            forceN_mag -= adhesionMultDMT_eff * Sqrt(eff_radius[index]);
+            force -= adhesionMultDMT_eff * Sqrt(eff_radius[index]) * normal[index];
             break;
     }
 
@@ -471,17 +489,18 @@ void ChIterativeSolverParallelSMC::host_CalcContactForces(custom_vector<int>& ex
             data_manager->settings.solver.adhesion_force_model, data_manager->settings.solver.tangential_displ_mode,
             data_manager->composition_strategy.get(), data_manager->settings.solver.use_material_properties,
             data_manager->settings.solver.characteristic_vel, data_manager->settings.solver.min_slip_vel,
+            data_manager->settings.solver.min_roll_vel, data_manager->settings.solver.min_twist_vel,
             data_manager->settings.step_size, data_manager->host_data.mass_rigid.data(),
             data_manager->host_data.pos_rigid.data(), data_manager->host_data.rot_rigid.data(),
             data_manager->host_data.v.data(), data_manager->host_data.elastic_moduli.data(),
             data_manager->host_data.cr.data(), data_manager->host_data.smc_coeffs.data(),
-            data_manager->host_data.mu.data(), data_manager->host_data.muR.data(),
-            data_manager->host_data.muT.data(), data_manager->host_data.cohesion_data.data(),
-            data_manager->host_data.adhesionMultDMT_data.data(), data_manager->host_data.bids_rigid_rigid.data(),
-            shape_pairs.data(), data_manager->host_data.cpta_rigid_rigid.data(),
-            data_manager->host_data.cptb_rigid_rigid.data(), data_manager->host_data.norm_rigid_rigid.data(),
-            data_manager->host_data.dpth_rigid_rigid.data(), data_manager->host_data.erad_rigid_rigid.data(),
-            data_manager->host_data.shear_neigh.data(), shear_touch.data(), data_manager->host_data.shear_disp.data(),
+            data_manager->host_data.mu.data(), data_manager->host_data.muR.data(), data_manager->host_data.muT.data(),
+            data_manager->host_data.cohesion_data.data(), data_manager->host_data.adhesionMultDMT_data.data(),
+            data_manager->host_data.bids_rigid_rigid.data(), shape_pairs.data(),
+            data_manager->host_data.cpta_rigid_rigid.data(), data_manager->host_data.cptb_rigid_rigid.data(),
+            data_manager->host_data.norm_rigid_rigid.data(), data_manager->host_data.dpth_rigid_rigid.data(),
+            data_manager->host_data.erad_rigid_rigid.data(), data_manager->host_data.shear_neigh.data(),
+            shear_touch.data(), data_manager->host_data.shear_disp.data(), data_manager->host_data.contact_coeff.data(),
             ext_body_id.data(), ext_body_force.data(), ext_body_torque.data());
     }
 }
