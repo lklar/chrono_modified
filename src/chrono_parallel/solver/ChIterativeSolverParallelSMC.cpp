@@ -236,7 +236,7 @@ void function_CalcContactForces(
                                 real tmp_g = 1 + Pow(CH_C_PI / loge, 2);
                                 contact_coeff[ctIdUnrolled].x = tmp_k * Pow(m_eff * v2 / tmp_k, 1.0 / 5);
                                 contact_coeff[ctIdUnrolled].y = contact_coeff[ctIdUnrolled].x;
-                                contact_coeff[ctIdUnrolled].z = Sqrt(4 * m_eff * kn / tmp_g);
+                                contact_coeff[ctIdUnrolled].z = Sqrt(4 * m_eff * contact_coeff[ctIdUnrolled].x / tmp_g);
                                 contact_coeff[ctIdUnrolled].w = contact_coeff[ctIdUnrolled].z;
                             } else {
                                 contact_coeff[ctIdUnrolled].x = user_kn;
@@ -429,7 +429,6 @@ void function_CalcContactForces(
     //    Length(v_rot);
     //}
 
-    GetLog() << "\n" << min_roll_vel << "\t" << min_twist_vel;
     // Calculate twisting friction torque as M_twist = -µ_t * r_c * (w_n - w_p) . F_n / ((w_n - w_p) . n)
     // r_c is the radius of the circle resulting from the intersecting body surfaces
     if (abs(Dot(o_body1 - o_body2, normal[index])) > min_twist_vel) {
