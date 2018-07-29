@@ -69,6 +69,7 @@ void function_CalcContactForces(
     real* muT,                                            // coefficient of twisting friction (per body)
     real* adhesion,                                       // constant force (per body)
     real* adhesionMultDMT,                                // Adhesion force multiplier (per body), in DMT model.
+    real* adhesionScheeres,                               // Adhesion force multiplier (per body), in Scheeres model.
     vec2* body_id,                                        // body IDs (per contact)
     vec2* shape_id,                                       // shape IDs (per contact)
     real3* pt1,                                           // point on shape 1 (per contact)
@@ -135,6 +136,7 @@ void function_CalcContactForces(
     real muT_eff = strategy->CombineFriction(muT[body1], muT[body2]);
     real adhesion_eff = strategy->CombineCohesion(adhesion[body1], adhesion[body2]);
     real adhesionMultDMT_eff = strategy->CombineAdhesionMultiplier(adhesionMultDMT[body1], adhesionMultDMT[body2]);
+    real adhesionScheeres_eff = strategy->CombineAdhesionMultiplier(adhesionScheeres[body1], adhesionScheeres[body2]);
 
     // Contact force
     // -------------
@@ -451,6 +453,9 @@ void function_CalcContactForces(
             // Derjaguin, Muller and Toporov (DMT) adhesion force,
             force -= adhesionMultDMT_eff * Sqrt(eff_radius[index]) * normal[index];
             break;
+        case ChSystemSMC::AdhesionForceModel::Scheeres:
+            // Scheeres (2010) adhesion force
+            force -= adhesionScheeres_eff * eff_radius[index] * normal[index];
     }
 
     // Store body forces and torques, duplicated for the two bodies.
@@ -477,14 +482,15 @@ void ChIterativeSolverParallelSMC::host_CalcContactForces(custom_vector<int>& ex
             index, data_manager->settings.solver.contact_force_model,
             data_manager->settings.solver.adhesion_force_model, data_manager->settings.solver.tangential_displ_mode,
             data_manager->composition_strategy.get(), data_manager->settings.solver.use_material_properties,
-            data_manager->settings.solver.characteristic_vel, 
-            data_manager->settings.solver.min_roll_vel, data_manager->settings.solver.min_twist_vel,
-            data_manager->settings.step_size, data_manager->host_data.mass_rigid.data(),
-            data_manager->host_data.pos_rigid.data(), data_manager->host_data.rot_rigid.data(),
-            data_manager->host_data.v.data(), data_manager->host_data.elastic_moduli.data(),
-            data_manager->host_data.cr.data(), data_manager->host_data.smc_coeffs.data(),
-            data_manager->host_data.mu.data(), data_manager->host_data.muR.data(), data_manager->host_data.muT.data(),
+            data_manager->settings.solver.characteristic_vel, data_manager->settings.solver.min_roll_vel, 
+            data_manager->settings.solver.min_twist_vel, data_manager->settings.step_size, 
+            data_manager->host_data.mass_rigid.data(), data_manager->host_data.pos_rigid.data(), 
+            data_manager->host_data.rot_rigid.data(), data_manager->host_data.v.data(), 
+            data_manager->host_data.elastic_moduli.data(), data_manager->host_data.cr.data(), 
+            data_manager->host_data.smc_coeffs.data(), data_manager->host_data.mu.data(), 
+            data_manager->host_data.muR.data(), data_manager->host_data.muT.data(),
             data_manager->host_data.cohesion_data.data(), data_manager->host_data.adhesionMultDMT_data.data(),
+            data_manager->host_data.adhesionScheeres_data.data(),
             data_manager->host_data.bids_rigid_rigid.data(), shape_pairs.data(),
             data_manager->host_data.cpta_rigid_rigid.data(), data_manager->host_data.cptb_rigid_rigid.data(),
             data_manager->host_data.norm_rigid_rigid.data(), data_manager->host_data.dpth_rigid_rigid.data(),

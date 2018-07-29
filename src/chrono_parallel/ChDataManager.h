@@ -357,11 +357,15 @@ struct host_container {
     custom_vector<real> cr;                    ///< Coefficient of restitution (SMC only)
     custom_vector<real4> smc_coeffs;           ///< Stiffness and damping coefficients (SMC only)
     custom_vector<real> adhesionMultDMT_data;  ///< Adhesion multipliers used in DMT model (SMC only)
+    custom_vector<real> adhesionScheeres_data; ///< Adhesion multipliers used in Scheeres model (SMC only)
     // Derjaguin-Muller-Toporov (DMT) model:
     // adhesion = adhesionMult * Sqrt(R_eff). Given the surface energy, w,
     //    adhesionMult = 2 * CH_C_PI * w * Sqrt(R_eff).
     // Given the equilibrium penetration distance, y_eq,
     //    adhesionMult = 4.0 / 3.0 * E_eff * powf(y_eq, 1.5)
+    // Scheeres (2010) adhesion model:
+    //    adhesion = 3.6 * 10^(-2) * S^2 * r
+    // with S being the measurement of cleanliness.
 
     /// This matrix, if used will hold D^TxM^-1xD in sparse form.
     CompressedMatrix<real> Nshur;

@@ -34,6 +34,7 @@ class ChApi ChMaterialSurfaceSMC : public ChMaterialSurface {
     float restitution;        ///< Coefficient of restitution
     float constant_adhesion;  ///< Constant adhesion force, when constant adhesion model is used
     float adhesionMultDMT;    ///< Adhesion multiplier used in DMT model.
+    float adhesionScheeres;   ///< Adhesion multiplier used in Scheeres model.
 
     // DMT adhesion model:
     //     adhesion = adhesionMultDMT * sqrt(R_eff).
@@ -41,6 +42,9 @@ class ChApi ChMaterialSurfaceSMC : public ChMaterialSurface {
     //     adhesionMultDMT = 2 * CH_C_PI * w * sqrt(R_eff).
     // Given the equilibrium penetration distance, y_eq,
     //     adhesionMultDMT = 4.0 / 3.0 * E_eff * powf(y_eq, 1.5)
+    // Scheeres adhesion model:
+    //     adhesion = 3.6 * 10^(-2) S^2 * r
+    // with S being the measure of cleanliness
 
     float kn;  ///< user-specified normal stiffness coefficient
     float kt;  ///< user-specified tangential stiffness coefficient
@@ -97,6 +101,10 @@ class ChApi ChMaterialSurfaceSMC : public ChMaterialSurface {
     float GetAdhesionMultDMT() const { return adhesionMultDMT; }
     void SetAdhesionMultDMT(float val) { adhesionMultDMT = val; }
 
+    /// Adhesion Scheeres multiplier
+    float GetAdhesionScheeres() const { return adhesionScheeres; }
+    void SetAdhesionScheeres(float val) { adhesionScheeres = val;}
+
     /// Stiffness and damping coefficients
     float GetKn() const { return kn; }
     float GetKt() const { return kt; }
@@ -132,6 +140,7 @@ class ChApi ChMaterialCompositeSMC : public ChMaterialComposite {
     float cr_eff;               ///< Effective coefficient of restitution
     float adhesion_eff;         ///< Effective cohesion force
     float adhesionMultDMT_eff;  ///< Effective adhesion multiplier (DMT model)
+    float adhesionScheeres_eff; ///< Effective adhesion multiplier (Scheeres model)
 
     float kn;  ///< normal stiffness coefficient
     float kt;  ///< tangential stiffness coefficient

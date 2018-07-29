@@ -57,7 +57,7 @@ void ChSystemParallelSMC::AddMaterialSurfaceData(std::shared_ptr<ChBody> newbody
     data_manager->host_data.muT.push_back(0);
     data_manager->host_data.cohesion_data.push_back(0);
     data_manager->host_data.adhesionMultDMT_data.push_back(0);
-
+    data_manager->host_data.adhesionScheeres_data.push_back(0);
     data_manager->host_data.mass_rigid.push_back(0);
 
     if (data_manager->settings.solver.use_material_properties) {
@@ -81,6 +81,7 @@ void ChSystemParallelSMC::UpdateMaterialSurfaceData(int index, ChBody* body) {
     custom_vector<real2>& elastic_moduli = data_manager->host_data.elastic_moduli;
     custom_vector<real>& adhesion = data_manager->host_data.cohesion_data;
     custom_vector<real>& adhesionMult = data_manager->host_data.adhesionMultDMT_data;
+    custom_vector<real>& adhesionScheeres = data_manager->host_data.adhesionScheeres_data;
     custom_vector<real>& mu = data_manager->host_data.mu;
     custom_vector<real>& muR = data_manager->host_data.muR;
     custom_vector<real>& muT = data_manager->host_data.muT;
@@ -100,6 +101,7 @@ void ChSystemParallelSMC::UpdateMaterialSurfaceData(int index, ChBody* body) {
     muT[index] = mat_ptr->GetTfriction();
     adhesion[index] = mat_ptr->GetAdhesion();
     adhesionMult[index] = mat_ptr->GetAdhesionMultDMT();
+    adhesionScheeres[index] = mat_ptr->GetAdhesionScheeres();
 
     if (data_manager->settings.solver.use_material_properties) {
         elastic_moduli[index] = real2(mat_ptr->GetYoungModulus(), mat_ptr->GetPoissonRatio());

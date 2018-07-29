@@ -129,6 +129,7 @@ ChMaterialCompositeSMC::ChMaterialCompositeSMC(ChMaterialCompositionStrategy<flo
     cr_eff = strategy->CombineRestitution(mat1->restitution, mat2->restitution);
     adhesion_eff = strategy->CombineCohesion(mat1->constant_adhesion, mat2->constant_adhesion);
     adhesionMultDMT_eff = strategy->CombineAdhesionMultiplier(mat1->adhesionMultDMT, mat2->adhesionMultDMT);
+    adhesionScheeres_eff = strategy->CombineAdhesionMultiplier(mat1->adhesionScheeres, mat2->adhesionScheeres);
 
     kn = strategy->CombineStiffnessCoefficient(mat1->kn, mat2->kn);
     kt = strategy->CombineStiffnessCoefficient(mat1->kt, mat2->kt);
