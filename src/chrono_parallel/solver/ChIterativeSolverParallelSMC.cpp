@@ -54,7 +54,6 @@ void function_CalcContactForces(
     ChMaterialCompositionStrategy<real>* strategy,        // material composition strategy
     bool use_mat_props,                                   // flag specifying how coefficients are obtained
     real char_vel,                                        // characteristic velocity (Hooke)
-    real min_slip_vel,                                    // threshold tangential velocity
     real min_roll_vel,                                    // threshold rolling velocity
     real min_twist_vel,                                   // threshold twisting velocity
     real dT,                                              // integration time step
@@ -131,35 +130,11 @@ void function_CalcContactForces(
 
     // Calculate composite material properties
     // ---------------------------------------
-
-    real m_eff = mass[body1] * mass[body2] / (mass[body1] + mass[body2]);
-
     real mu_eff = strategy->CombineFriction(mu[body1], mu[body2]);
     real muR_eff = strategy->CombineFriction(muR[body1], muR[body2]);
     real muT_eff = strategy->CombineFriction(muT[body1], muT[body2]);
     real adhesion_eff = strategy->CombineCohesion(adhesion[body1], adhesion[body2]);
     real adhesionMultDMT_eff = strategy->CombineAdhesionMultiplier(adhesionMultDMT[body1], adhesionMultDMT[body2]);
-
-    real E_eff, G_eff, cr_eff;
-    real user_kn, user_kt, user_gn, user_gt;
-
-    if (use_mat_props) {
-        real Y1 = elastic_moduli[body1].x;
-        real Y2 = elastic_moduli[body2].x;
-        real nu1 = elastic_moduli[body1].y;
-        real nu2 = elastic_moduli[body2].y;
-        real inv_E = (1 - nu1 * nu1) / Y1 + (1 - nu2 * nu2) / Y2;
-        real inv_G = 2 * (2 - nu1) * (1 + nu1) / Y1 + 2 * (2 - nu2) * (1 + nu2) / Y2;
-
-        E_eff = 1 / inv_E;
-        G_eff = 1 / inv_G;
-        cr_eff = strategy->CombineRestitution(cr[body1], cr[body2]);
-    } else {
-        user_kn = strategy->CombineStiffnessCoefficient(smc_coeffs[body1].x, smc_coeffs[body2].x);
-        user_kt = strategy->CombineStiffnessCoefficient(smc_coeffs[body1].y, smc_coeffs[body2].y);
-        user_gn = strategy->CombineDampingCoefficient(smc_coeffs[body1].z, smc_coeffs[body2].z);
-        user_gt = strategy->CombineDampingCoefficient(smc_coeffs[body1].w, smc_coeffs[body2].w);
-    }
 
     // Contact force
     // -------------
@@ -226,6 +201,20 @@ void function_CalcContactForces(
                     shear_disp[ctIdUnrolled].x = 0;
                     shear_disp[ctIdUnrolled].y = 0;
                     shear_disp[ctIdUnrolled].z = 0;
+
+                    real Y1 = elastic_moduli[body1].x;
+                    real Y2 = elastic_moduli[body2].x;
+                    real nu1 = elastic_moduli[body1].y;
+                    real nu2 = elastic_moduli[body2].y;
+                    real inv_E = (1 - nu1 * nu1) / Y1 + (1 - nu2 * nu2) / Y2;
+                    real inv_G = 2 * (2 - nu1) * (1 + nu1) / Y1 + 2 * (2 - nu2) * (1 + nu2) / Y2;
+
+                    real E_eff = 1 / inv_E;
+                    real G_eff = 1 / inv_G;
+                    real cr_eff = strategy->CombineRestitution(cr[body1], cr[body2]);
+
+                    real m_eff = mass[body1] * mass[body2] / (mass[body1] + mass[body2]);
+
                     switch (contact_model) {
                         case ChSystemSMC::ContactForceModel::Hooke:
                             if (use_mat_props) {
@@ -239,10 +228,10 @@ void function_CalcContactForces(
                                 contact_coeff[ctIdUnrolled].z = Sqrt(4 * m_eff * contact_coeff[ctIdUnrolled].x / tmp_g);
                                 contact_coeff[ctIdUnrolled].w = contact_coeff[ctIdUnrolled].z;
                             } else {
-                                contact_coeff[ctIdUnrolled].x = user_kn;
-                                contact_coeff[ctIdUnrolled].y = user_kt;
-                                contact_coeff[ctIdUnrolled].z = m_eff * user_gn;
-                                contact_coeff[ctIdUnrolled].w = m_eff * user_gt;
+                                contact_coeff[ctIdUnrolled].x = strategy->CombineStiffnessCoefficient(smc_coeffs[body1].x, smc_coeffs[body2].x);
+                                contact_coeff[ctIdUnrolled].y = strategy->CombineStiffnessCoefficient(smc_coeffs[body1].y, smc_coeffs[body2].y);
+                                contact_coeff[ctIdUnrolled].z = m_eff * strategy->CombineDampingCoefficient(smc_coeffs[body1].z, smc_coeffs[body2].z);
+                                contact_coeff[ctIdUnrolled].w = m_eff * strategy->CombineDampingCoefficient(smc_coeffs[body1].w, smc_coeffs[body2].w);
                             }
                             break;
 
@@ -259,10 +248,10 @@ void function_CalcContactForces(
                                 contact_coeff[ctIdUnrolled].w = -2 * Sqrt(5.0 / 6) * beta * Sqrt(St * m_eff);
                             } else {
                                 real tmp = eff_radius[index] * Sqrt(delta_n);
-                                contact_coeff[ctIdUnrolled].x = tmp * user_kn;
-                                contact_coeff[ctIdUnrolled].y = tmp * user_kt;
-                                contact_coeff[ctIdUnrolled].z = tmp * m_eff * user_gn;
-                                contact_coeff[ctIdUnrolled].w = tmp * m_eff * user_gt;
+                                contact_coeff[ctIdUnrolled].x = tmp * strategy->CombineStiffnessCoefficient(smc_coeffs[body1].x, smc_coeffs[body2].x);
+                                contact_coeff[ctIdUnrolled].y = tmp * strategy->CombineStiffnessCoefficient(smc_coeffs[body1].y, smc_coeffs[body2].y);
+                                contact_coeff[ctIdUnrolled].z = tmp * m_eff * strategy->CombineDampingCoefficient(smc_coeffs[body1].z, smc_coeffs[body2].z);
+                                contact_coeff[ctIdUnrolled].w = tmp * m_eff * strategy->CombineDampingCoefficient(smc_coeffs[body1].w, smc_coeffs[body2].w);
                             }
                             break;
 
@@ -276,8 +265,10 @@ void function_CalcContactForces(
                                 contact_coeff[ctIdUnrolled].y = -2 * Sqrt(5.0 / 6) * beta * Sqrt(Sn * m_eff);
                             } else {
                                 real tmp = Sqrt(delta_n);
-                                contact_coeff[ctIdUnrolled].x = tmp * user_kn;
-                                contact_coeff[ctIdUnrolled].y = tmp * user_gn;
+                                contact_coeff[ctIdUnrolled].x = tmp * strategy->CombineStiffnessCoefficient(smc_coeffs[body1].x, smc_coeffs[body2].x);
+                                contact_coeff[ctIdUnrolled].y = tmp * strategy->CombineStiffnessCoefficient(smc_coeffs[body1].y, smc_coeffs[body2].y);
+                                contact_coeff[ctIdUnrolled].z = 0;
+                                contact_coeff[ctIdUnrolled].w = 0;
                             }
                     }
                     break;
@@ -422,12 +413,11 @@ void function_CalcContactForces(
 
     
     // Calculate rolling friction torque as M_roll = µ_r * l_p * (F_N x v_rot) / |v_rot|
-    //real3 v_rot = Rotate(Cross(o_body1, pt1_loc), rot[body1]) - Rotate(Cross(o_body2, pt2_loc), rot[body2]);
-    //if (Length(v_rot) > min_roll_vel) {
-    //    torque1_loc += muR_eff * (Length(pt1_loc) - delta_n) * Cross(forceN_mag * normal[index], v_rot) / Length(v_rot);
-    //    torque2_loc += muR_eff * (Length(pt2_loc) - delta_n) * Cross(forceN_mag * normal[index], v_rot) /
-    //    Length(v_rot);
-    //}
+    real3 v_rot = Rotate(Cross(o_body1, pt1_loc), rot[body1]) + Rotate(Cross(o_body2, pt2_loc), rot[body2]);
+    if (Length(v_rot) > min_roll_vel) {
+        torque1_loc += muR_eff * eff_radius[index] * Cross(forceN_mag * normal[index], v_rot) / Length(v_rot);
+        torque2_loc += muR_eff * eff_radius[index] * Cross(forceN_mag * normal[index], v_rot) / Length(v_rot);
+    }
 
     // Calculate twisting friction torque as M_twist = -µ_t * r_c * (w_n - w_p) . F_n / ((w_n - w_p) . n)
     // r_c is the radius of the circle resulting from the intersecting body surfaces
@@ -442,13 +432,13 @@ void function_CalcContactForces(
     }
     
 
-    //real3 buff1 = v_rot, buff2 = v_rot;
+    real3 buff1 = v_body2;
     //GetLog() << Length(o_body1) << "\t" << Length(o_body2);
-    // GetLog() << Length(torque1_loc) << "\t" << Length(torque2_loc) << "\t" << o_body1.z << "\t" << o_body2.z << "\n";
-    // GetLog() << Length(buff1) << "\t" << buff1.x << "\t" << buff1.y << "\t" << buff1.z << "\t";
-    // GetLog() << Length(buff2) << "\t" << buff2.x << "\t" << buff2.y << "\t" << buff2.z << "\t";
-    // GetLog() << Length(o_body1) << "\t" << Length(o_body2) << "\t" << delta_n << "\t" << Length(Cross(forceN_mag *
-    // normal[index], v_rot)) << "\n";
+    //GetLog() << Length(torque1_loc) << "\t" << Length(torque2_loc) << "\t" << o_body1.z << "\t" << o_body2.z << "\n";
+    //GetLog() << Length(buff1) << "\t" << buff1.x << "\t" << buff1.y << "\t" << buff1.z << "\t";
+    //GetLog() << Length(buff2) << "\t" << buff2.x << "\t" << buff2.y << "\t" << buff2.z << "\t";
+    //GetLog() << Length(o_body1) << "\t" << Length(o_body2) << "\t" << delta_n << "\t" << Length(Cross(forceN_mag *
+    //normal[index], v_rot)) << "\n";
     //GetLog() << "\n";
 
     // Include adhesion force.
@@ -487,7 +477,7 @@ void ChIterativeSolverParallelSMC::host_CalcContactForces(custom_vector<int>& ex
             index, data_manager->settings.solver.contact_force_model,
             data_manager->settings.solver.adhesion_force_model, data_manager->settings.solver.tangential_displ_mode,
             data_manager->composition_strategy.get(), data_manager->settings.solver.use_material_properties,
-            data_manager->settings.solver.characteristic_vel, data_manager->settings.solver.min_slip_vel,
+            data_manager->settings.solver.characteristic_vel, 
             data_manager->settings.solver.min_roll_vel, data_manager->settings.solver.min_twist_vel,
             data_manager->settings.step_size, data_manager->host_data.mass_rigid.data(),
             data_manager->host_data.pos_rigid.data(), data_manager->host_data.rot_rigid.data(),
