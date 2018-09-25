@@ -26,6 +26,7 @@
 #include <thrust/sequence.h>
 #include <thrust/iterator/constant_iterator.h>
 
+
 #if defined(CHRONO_OPENMP_ENABLED)
 #include <thrust/system/omp/execution_policy.h>
 #elif defined(CHRONO_TBB_ENABLED)
@@ -86,7 +87,7 @@ void ChCBroadphase::RigidBoundingBox() {
     // Vectors of length = number of rigid bodies
     const custom_vector<char>& collide_rigid = data_manager->host_data.collide_rigid;
 
-    // Calculate union of all AABBs.  
+    // Calculate union of all AABBs.
     // Excluded AABBs are inverted through the transform operation, prior to the reduction.
     auto begin = thrust::make_zip_iterator(thrust::make_tuple(aabb_min.begin(), aabb_max.begin(), id_rigid.begin()));
     auto end = thrust::make_zip_iterator(thrust::make_tuple(aabb_min.end(), aabb_max.end(), id_rigid.end()));
@@ -103,9 +104,9 @@ typedef thrust::pair<real3, real3> bbox;
 struct bbox_reduction : public thrust::binary_function<bbox, bbox, bbox> {
     bbox operator()(bbox a, bbox b) {
         real3 ll = real3(Min(a.first.x, b.first.x), Min(a.first.y, b.first.y),
-            Min(a.first.z, b.first.z));  // lower left corner
+                         Min(a.first.z, b.first.z));  // lower left corner
         real3 ur = real3(Max(a.second.x, b.second.x), Max(a.second.y, b.second.y),
-            Max(a.second.z, b.second.z));  // upper right corner
+                         Max(a.second.z, b.second.z));  // upper right corner
         return bbox(ll, ur);
     }
 };
@@ -341,5 +342,5 @@ void ChCBroadphase::OneLevelBroadphase() {
     LOG(TRACE) << "Number of unique collisions: " << number_of_contacts_possible;
 }
 
-} // end namespace collision
-} // end namespace chrono
+}  // end namespace collision
+}  // end namespace chrono

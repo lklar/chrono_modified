@@ -124,10 +124,6 @@ class ChContactSMC : public ChContactTuple<Ta, Tb> {
     /// Calculate coefficents of stiffness and dampening, effective radius of curvature and pre-contact velocity for
     /// this contact
     void SetParameters(Ta* mobjA, Tb* mobjB, const collision::ChCollisionInfo& cinfo) {
-        GetLog() << "\n\n\n";
-		GetLog() << "F_t" << "\t\t" << "delta_t" << "\t\t" << "v_t" << "\t\t" << "delta" << "\t\t" << "v_n" << "\t\t"
-                 << "mu * F_n"<< "\n\n";
-
         // Calculate effective radius of curvature by deducing the radius of the objects (assuming theyre spheres)
         // from the dimensions of their collision model
         ChVector<> bbminA, bbmaxA, bbminB, bbmaxB;
@@ -305,13 +301,6 @@ class ChContactSMC : public ChContactTuple<Ta, Tb> {
                 forceN = kn * pow(delta, 1.5) * (1 - gn * relvel_n_mag);
                 break;
         }
-        //std::cout << std::fixed << std::setprecision(6) << std::scientific;
-        //std::cout << forceT << "\t" << delta_t << "\t" << relvel_t_mag << "\t";
-        //std::cout << delta << "\t" << relvel_n_mag << "\t" << mat.mu_eff * std::abs(forceN) << "\n";
-
-		//std::cin.sync();
-        //std::cin.ignore();
-
 		if (forceN < 0)
             forceN = 0;
         //forceT = mat.mu_eff * std::tanh(5.0 * relvel_t_mag) * forceN;

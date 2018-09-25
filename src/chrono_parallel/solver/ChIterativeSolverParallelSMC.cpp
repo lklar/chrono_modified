@@ -414,34 +414,25 @@ void function_CalcContactForces(
     real3 torque2_loc = Cross(pt2_loc, RotateT(force, rot[body2]));
 
     
-    // Calculate rolling friction torque as M_roll = µ_r * l_p * (F_N x v_rot) / |v_rot|
+    // Calculate rolling friction torque as M_roll = µ_r * R * (F_N x v_rot) / |v_rot|
     real3 v_rot = Rotate(Cross(o_body1, pt1_loc), rot[body1]) + Rotate(Cross(o_body2, pt2_loc), rot[body2]);
     if (Length(v_rot) > min_roll_vel) {
-        torque1_loc += muR_eff * eff_radius[index] * Cross(forceN_mag * normal[index], v_rot) / Length(v_rot);
-        torque2_loc += muR_eff * eff_radius[index] * Cross(forceN_mag * normal[index], v_rot) / Length(v_rot);
+        real3 torque_buff = muR_eff * eff_radius[index] * Cross(forceN_mag * normal[index], v_rot) / Length(v_rot);
+        torque1_loc += torque_buff;
+        torque2_loc += torque_buff;
     }
 
-    // Calculate twisting friction torque as M_twist = -µ_t * r_c * (w_n - w_p) . F_n / ((w_n - w_p) . n)
+    // Calculate twisting friction torque as M_twist = -µ_t * r_c * ((w_n - w_p) . F_n / |w_n - w_p|) * n
     // r_c is the radius of the circle resulting from the intersecting body surfaces
     if (abs(Dot(o_body1 - o_body2, normal[index])) > min_twist_vel) {
         double R1 = Length(pt1_loc), R2 = Length(pt2_loc);
         double R_center = (R1 * R1 - R2 * R2) / (2 * (R1 + R2 - delta_n)) + 0.5 * (R1 + R2 - delta_n);
         double r_c = sqrt(pow(R1, 2) - pow(R_center, 2));
-        torque1_loc -= muT_eff * r_c *
-                       (Dot(o_body2 - o_body1, forceN_mag * normal[index]) / Length(o_body1 - o_body2)) * normal[index];
-        torque2_loc -= muT_eff * r_c *
-                       (Dot(o_body2 - o_body1, forceN_mag * normal[index]) / Length(o_body1 - o_body2)) * normal[index];
+        real3 torque_buff = muT_eff * r_c * (Dot(o_body2 - o_body1, forceN_mag * normal[index]) / Length(o_body1 - o_body2)) * normal[index];
+        torque1_loc -= torque_buff;
+        torque2_loc -= torque_buff;
     }
     
-
-    real3 buff1 = v_body2;
-    //GetLog() << Length(o_body1) << "\t" << Length(o_body2);
-    //GetLog() << Length(torque1_loc) << "\t" << Length(torque2_loc) << "\t" << o_body1.z << "\t" << o_body2.z << "\n";
-    //GetLog() << Length(buff1) << "\t" << buff1.x << "\t" << buff1.y << "\t" << buff1.z << "\t";
-    //GetLog() << Length(buff2) << "\t" << buff2.x << "\t" << buff2.y << "\t" << buff2.z << "\t";
-    //GetLog() << Length(o_body1) << "\t" << Length(o_body2) << "\t" << delta_n << "\t" << Length(Cross(forceN_mag *
-    //normal[index], v_rot)) << "\n";
-    //GetLog() << "\n";
 
     // Include adhesion force.
     switch (adhesion_model) {

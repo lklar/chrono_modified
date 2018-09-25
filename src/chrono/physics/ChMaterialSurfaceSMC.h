@@ -43,6 +43,8 @@ class ChApi ChMaterialSurfaceSMC : public ChMaterialSurface {
     // Given the equilibrium penetration distance, y_eq,
     //     adhesionMultDMT = 4.0 / 3.0 * E_eff * powf(y_eq, 1.5)
     // Scheeres adhesion model:
+    //     adhesion = adhesionScheeres * r
+    // In Scheeres (2010) paper, the following value is used:
     //     adhesion = 3.6 * 10^(-2) S^2 * r
     // with S being the measure of cleanliness
 
@@ -91,7 +93,26 @@ class ChApi ChMaterialSurfaceSMC : public ChMaterialSurface {
 
     /// Normal restitution coefficient
     float GetRestitution() const { return restitution; }
-    void SetRestitution(float val) { restitution = val; }
+    void SetRestitution(float val) { 
+        double x = val;
+        double a0 = 0.81414;
+        double a1 = -16.82424;
+        double a2 = 134.83788;
+        double a3 = -570.11297;
+        double a4 = 1520.52153;
+        double a5 = -2652.48144;
+        double a6 = 3021.53888;
+        double a7 = -2165.97278;
+        double a8 = 886.75089;
+        double a9 = -158.07215;
+
+        double true_restitution;
+        true_restitution = a0 + a1 * x + a2 * pow(x,2) + a3 * pow(x,3)
+                              + a4 * pow(x,4) + a5 * pow(x,5) + a6 * pow(x,6)
+                              + a7 * pow(x,7) + a8 * pow(x,8) + a9 * pow(x,9);
+        if (x < 0.1375)
+            true_restitution = 0;
+        restitution = true_restitution; }
 
     /// Constant cohesion force
     float GetAdhesion() const { return constant_adhesion; }

@@ -98,7 +98,7 @@ class CH_PARALLEL_API ChSystemParallel : public ChSystem {
     virtual double GetTimerCollisionNarrow() override;
     /// Gets the fraction of time (in seconds) for updating auxiliary data, within the time step.
     virtual double GetTimerUpdate() override;
-
+    
     /// Gets the total time for the collision detection step.
     double GetTimerCollision();
 
