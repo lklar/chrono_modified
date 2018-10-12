@@ -93,7 +93,8 @@ class ChApi ChMaterialSurfaceSMC : public ChMaterialSurface {
 
     /// Normal restitution coefficient
     float GetRestitution() const { return restitution; }
-    void SetRestitution(float val) { 
+    void SetRestitution(float val) { restitution = val;}
+    void SetRestitutionFix(float val) { 
         double x = val;
         double a0 = 0.81414;
         double a1 = -16.82424;

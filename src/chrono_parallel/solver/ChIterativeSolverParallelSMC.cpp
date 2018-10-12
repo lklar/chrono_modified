@@ -165,6 +165,76 @@ void function_CalcContactForces(
     if (displ_mode == ChSystemSMC::TangentialDisplacementModel::OneStep) {
         delta_t = relvel_t * dT;
 
+        real Y1 = elastic_moduli[body1].x;
+        real Y2 = elastic_moduli[body2].x;
+        real nu1 = elastic_moduli[body1].y;
+        real nu2 = elastic_moduli[body2].y;
+        real inv_E = (1 - nu1 * nu1) / Y1 + (1 - nu2 * nu2) / Y2;
+        real inv_G = 2 * (2 - nu1) * (1 + nu1) / Y1 + 2 * (2 - nu2) * (1 + nu2) / Y2;
+
+        real E_eff = 1 / inv_E;
+        real G_eff = 1 / inv_G;
+        real cr_eff = strategy->CombineRestitution(cr[body1], cr[body2]);
+
+        real m_eff = mass[body1] * mass[body2] / (mass[body1] + mass[body2]);
+
+        switch (contact_model) {
+            case ChSystemSMC::ContactForceModel::Hooke:
+                if (use_mat_props) {
+                    real tmp_k = (16.0 / 15) * Sqrt(eff_radius[index]) * E_eff;
+                    real v2 = char_vel * char_vel;
+                    real loge = (cr_eff < CH_MICROTOL) ? Log(CH_MICROTOL) : Log(cr_eff);
+                    loge = (cr_eff > 1 - CH_MICROTOL) ? Log(1 - CH_MICROTOL) : loge;
+                    real tmp_g = 1 + Pow(CH_C_PI / loge, 2);
+                    kn = tmp_k * Pow(m_eff * v2 / tmp_k, 1.0 / 5);
+                    kt = kn;
+                    gn = Sqrt(4 * m_eff * kn / tmp_g);
+                    gt = gn;
+                } else {
+                    kn = strategy->CombineStiffnessCoefficient(smc_coeffs[body1].x, smc_coeffs[body2].x);
+                    kt = strategy->CombineStiffnessCoefficient(smc_coeffs[body1].y, smc_coeffs[body2].y);
+                    gn = m_eff * strategy->CombineDampingCoefficient(smc_coeffs[body1].z, smc_coeffs[body2].z);
+                    gt = m_eff * strategy->CombineDampingCoefficient(smc_coeffs[body1].w, smc_coeffs[body2].w);
+                }
+                break;
+
+            case ChSystemSMC::ContactForceModel::Hertz:
+                if (use_mat_props) {
+                    real sqrt_R = Sqrt(eff_radius[index]);
+                    real Sn = 2 * E_eff * sqrt_R;
+                    real St = 8 * G_eff * sqrt_R;
+                    real loge = (cr_eff < CH_MICROTOL) ? Log(CH_MICROTOL) : Log(cr_eff);
+                    real beta = loge / Sqrt(loge * loge + CH_C_PI * CH_C_PI);
+                    kn = (2.0 / 3) * Sn;
+                    kt = St;
+                    gn = -2 * Sqrt(5.0 / 6) * beta * Sqrt(Sn * m_eff);
+                    gt = -2 * Sqrt(5.0 / 6) * beta * Sqrt(St * m_eff);
+                } else {
+                    real tmp = eff_radius[index] * Sqrt(delta_n);
+                    kn = tmp * strategy->CombineStiffnessCoefficient(smc_coeffs[body1].x, smc_coeffs[body2].x);
+                    kt = tmp * strategy->CombineStiffnessCoefficient(smc_coeffs[body1].y, smc_coeffs[body2].y);
+                    gn = tmp * m_eff * strategy->CombineDampingCoefficient(smc_coeffs[body1].z, smc_coeffs[body2].z);
+                    gt = tmp * m_eff * strategy->CombineDampingCoefficient(smc_coeffs[body1].w, smc_coeffs[body2].w);
+                }
+                break;
+
+            case ChSystemSMC::ContactForceModel::PlainCoulomb:
+                if (use_mat_props) {
+                    real Sn = 2 * E_eff;
+                    real St = 8 * G_eff;
+                    real loge = (cr_eff < CH_MICROTOL) ? Log(CH_MICROTOL) : Log(cr_eff);
+                    real beta = loge / Sqrt(loge * loge + CH_C_PI * CH_C_PI);
+                    kn = (2.0 / 3) * Sn;
+                    kt = -2 * Sqrt(5.0 / 6) * beta * Sqrt(Sn * m_eff);
+                } else {
+                    real tmp = Sqrt(delta_n);
+                    kn = tmp * strategy->CombineStiffnessCoefficient(smc_coeffs[body1].x, smc_coeffs[body2].x);
+                    kt = tmp * strategy->CombineStiffnessCoefficient(smc_coeffs[body1].y, smc_coeffs[body2].y);
+                    gn = 0;
+                    gt = 0;
+                }
+        }
+
     } else if (displ_mode == ChSystemSMC::TangentialDisplacementModel::MultiStep) {
         delta_t = relvel_t * dT;
 
@@ -264,7 +334,7 @@ void function_CalcContactForces(
                                 real loge = (cr_eff < CH_MICROTOL) ? Log(CH_MICROTOL) : Log(cr_eff);
                                 real beta = loge / Sqrt(loge * loge + CH_C_PI * CH_C_PI);
                                 contact_coeff[ctIdUnrolled].x = (2.0 / 3) * Sn;
-                                contact_coeff[ctIdUnrolled].y = -2 * Sqrt(5.0 / 6) * beta * Sqrt(Sn * m_eff);
+                                contact_coeff[ctIdUnrolled].z = -2 * Sqrt(5.0 / 6) * beta * Sqrt(Sn * m_eff);
                             } else {
                                 real tmp = Sqrt(delta_n);
                                 contact_coeff[ctIdUnrolled].x = tmp * strategy->CombineStiffnessCoefficient(smc_coeffs[body1].x, smc_coeffs[body2].x);
@@ -330,20 +400,46 @@ void function_CalcContactForces(
             if (forceN_mag < 0)
                 forceN_mag = 0;
             real forceT_mag = mu_eff * Tanh(5.0 * relvel_t_mag) * forceN_mag;
-            switch (adhesion_model) {
-                case ChSystemSMC::AdhesionForceModel::Constant:
-                    forceN_mag -= adhesion_eff;
-                    break;
-                case ChSystemSMC::AdhesionForceModel::DMT:
-                    forceN_mag -= adhesionMultDMT_eff * Sqrt(eff_radius[index]);
-                    break;
-            }
             real3 force = forceN_mag * normal[index];
             if (relvel_t_mag >= (real)1e-4)
                 force -= (forceT_mag / relvel_t_mag) * relvel_t;
 
             real3 torque1_loc = Cross(pt1_loc, RotateT(force, rot[body1]));
             real3 torque2_loc = Cross(pt2_loc, RotateT(force, rot[body2]));
+
+            // Calculate rolling friction torque as M_roll = µ_r * R * (F_N x v_rot) / |v_rot|
+            real3 v_rot = Rotate(Cross(o_body1, pt1_loc), rot[body1]) + Rotate(Cross(o_body2, pt2_loc), rot[body2]);
+            if (Length(v_rot) > min_roll_vel) {
+                real3 torque_buff =
+                    muR_eff * eff_radius[index] * Cross(forceN_mag * normal[index], v_rot) / Length(v_rot);
+                torque1_loc += torque_buff;
+                torque2_loc += torque_buff;
+            }
+
+            // Calculate twisting friction torque as M_twist = -µ_t * r_c * ((w_n - w_p) . F_n / |w_n - w_p|) * n
+            // r_c is the radius of the circle resulting from the intersecting body surfaces
+            if (Length(o_body2 - o_body1) > min_twist_vel) {
+                double R1 = Length(pt1_loc), R2 = Length(pt2_loc);
+                double R_center = (R1 * R1 - R2 * R2) / (2 * (R1 + R2 - delta_n)) + 0.5 * (R1 + R2 - delta_n);
+                double r_c = sqrt(pow(R1, 2) - pow(R_center, 2));
+                real3 torque_buff = muT_eff * r_c *
+                                    (Dot(o_body2 - o_body1, forceN_mag * normal[index]) / Length(o_body1 - o_body2)) *
+                                    normal[index];
+                torque1_loc -= torque_buff;
+                torque2_loc -= torque_buff;
+            }
+
+            switch (adhesion_model) {
+                case ChSystemSMC::AdhesionForceModel::Constant:
+                    force -= adhesion_eff * normal[index];
+                    break;
+                case ChSystemSMC::AdhesionForceModel::DMT:
+                    force -= adhesionMultDMT_eff * Sqrt(eff_radius[index]) * normal[index];
+                    break;
+                case ChSystemSMC::AdhesionForceModel::Scheeres:
+                    // Scheeres (2010) adhesion force
+                    force -= adhesionScheeres_eff * eff_radius[index] * normal[index];
+            }
 
             ext_body_id[2 * index] = body1;
             ext_body_id[2 * index + 1] = body2;
@@ -424,7 +520,7 @@ void function_CalcContactForces(
 
     // Calculate twisting friction torque as M_twist = -µ_t * r_c * ((w_n - w_p) . F_n / |w_n - w_p|) * n
     // r_c is the radius of the circle resulting from the intersecting body surfaces
-    if (abs(Dot(o_body1 - o_body2, normal[index])) > min_twist_vel) {
+    if (Length(o_body2 - o_body1) > min_twist_vel) {
         double R1 = Length(pt1_loc), R2 = Length(pt2_loc);
         double R_center = (R1 * R1 - R2 * R2) / (2 * (R1 + R2 - delta_n)) + 0.5 * (R1 + R2 - delta_n);
         double r_c = sqrt(pow(R1, 2) - pow(R_center, 2));
